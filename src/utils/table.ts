@@ -20,13 +20,13 @@ export function parseTableName(
     return {
       schema: defaultSchema,
       name: maybeSchema,
-      fullName: `${defaultSchema}.${maybeSchema}`,
+      fullName: maybeSchema,
     };
   }
 
   return {
     schema: maybeSchema,
     name: maybeName,
-    fullName: `${maybeSchema}.${maybeName}`,
+    fullName: maybeName,
   };
 }

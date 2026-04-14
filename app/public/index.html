@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSV to Supabase — Agentic Pipeline v2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.6;min-height:100vh}
+.container{max-width:1000px;margin:0 auto;padding:2rem 1.5rem}
+header{margin-bottom:2rem}
+header h1{font-size:1.75rem;color:#f0f6fc;font-weight:700}
+header p{color:#8b949e;font-size:.9rem;margin-top:.25rem}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:1.5rem;margin-bottom:1.25rem;transition:opacity .3s}
+.card.disabled{opacity:.4;pointer-events:none}
+.card h2{font-size:1.05rem;color:#f0f6fc;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem}
+.step{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;font-size:.8rem;font-weight:700;flex-shrink:0}
+.step.pending{background:#30363d;color:#8b949e}.step.active{background:#1f6feb;color:#fff}.step.done{background:#238636;color:#fff}
+select,button,textarea{font-family:inherit;font-size:.9rem}
+select{width:100%;padding:.6rem .8rem;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b949e'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .8rem center}
+select:focus{outline:none;border-color:#1f6feb}
+.btn{padding:.6rem 1.4rem;border:none;border-radius:6px;font-weight:600;cursor:pointer;transition:background .15s}
+.btn-primary{background:#238636;color:#fff}.btn-primary:hover{background:#2ea043}.btn-primary:disabled{background:#30363d;color:#8b949e;cursor:not-allowed}
+.btn-blue{background:#1f6feb;color:#fff}.btn-blue:hover{background:#388bfd}.btn-blue:disabled{background:#30363d;color:#8b949e;cursor:not-allowed}
+.btn-outline{background:transparent;border:1px solid #30363d;color:#c9d1d9}.btn-outline:hover{border-color:#8b949e}
+.btn-orange{background:#d29922;color:#0d1117;font-weight:700}.btn-orange:hover{background:#e3b341}.btn-orange:disabled{background:#30363d;color:#8b949e;cursor:not-allowed}
+.upload-zone{border:2px dashed #30363d;border-radius:8px;padding:2.5rem 1rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.upload-zone:hover,.upload-zone.dragover{border-color:#1f6feb;background:#1f6feb10}
+.upload-zone p{color:#8b949e;font-size:.9rem}.upload-zone .browse{color:#58a6ff;text-decoration:underline;cursor:pointer}
+.file-info{margin-top:.75rem;padding:.6rem .8rem;background:#0d1117;border-radius:6px;font-size:.85rem;display:none;justify-content:space-between;align-items:center}
+.file-info .name{color:#58a6ff}.file-info .size{color:#8b949e}
+table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.75rem}
+th,td{padding:.45rem .6rem;border:1px solid #21262d;text-align:left}
+th{background:#0d1117;color:#8b949e;font-weight:600;white-space:nowrap}
+td{color:#c9d1d9}
+.tbl-wrap{overflow-x:auto;max-height:300px;overflow-y:auto;border-radius:6px;border:1px solid #21262d;margin-top:.75rem}.tbl-wrap table{margin:0}
+.badge{display:inline-block;padding:.15rem .5rem;border-radius:20px;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+.badge-high{background:#23863620;color:#3fb950;border:1px solid #23863640}
+.badge-medium{background:#d2992220;color:#d29922;border:1px solid #d2992240}
+.badge-low{background:#f8514920;color:#f85149;border:1px solid #f8514940}
+.badge-none{background:#30363d;color:#8b949e}
+.badge-transform{background:#1f6feb20;color:#58a6ff;border:1px solid #1f6feb40}
+.badge-critical{background:#f8514920;color:#f85149;border:1px solid #f8514940}
+.badge-warning{background:#d2992220;color:#d29922;border:1px solid #d2992240}
+.badge-info{background:#1f6feb20;color:#58a6ff;border:1px solid #1f6feb40}
+.section{margin-top:1.25rem}.section h3{font-size:.9rem;color:#f0f6fc;margin-bottom:.5rem;font-weight:600}
+.section-list{list-style:none}.section-list li{padding:.4rem .6rem;font-size:.83rem;border-left:3px solid #30363d;margin-bottom:.35rem;background:#0d111780;border-radius:0 4px 4px 0}
+.section-list li.warn{border-left-color:#d29922}.section-list li.err{border-left-color:#f85149}.section-list li.info{border-left-color:#58a6ff}.section-list li.ok{border-left-color:#3fb950}
+.actions{margin-top:1.25rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+.actions label{font-size:.85rem;color:#8b949e}.actions select{width:auto;min-width:200px}
+.alert{padding:.8rem 1rem;border-radius:6px;font-size:.85rem;margin-top:.75rem}
+.alert-error{background:#f8514915;border:1px solid #f8514940;color:#f85149}
+.alert-success{background:#23863615;border:1px solid #23863640;color:#3fb950}
+.result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-top:1rem}
+.result-card{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:1rem;text-align:center}
+.result-card .num{font-size:1.8rem;font-weight:700;color:#f0f6fc}.result-card .label{font-size:.78rem;color:#8b949e;margin-top:.2rem}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #30363d;border-top-color:#58a6ff;border-radius:50%;animation:spin .6s linear infinite;margin-right:.4rem;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+.check-col{width:36px;text-align:center}.check-col input{accent-color:#238636;width:16px;height:16px;cursor:pointer}
+.score-bar{height:8px;border-radius:4px;background:#21262d;overflow:hidden;margin-top:.3rem}
+.score-fill{height:100%;border-radius:4px;transition:width .5s}
+.score-fill.good{background:#3fb950}.score-fill.mid{background:#d29922}.score-fill.bad{background:#f85149}
+.reflection-entry{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:.8rem;margin-bottom:.6rem;font-size:.82rem}
+.reflection-entry .turn-badge{font-weight:700;color:#58a6ff}
+.breakdown-row{display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;font-size:.83rem;border-bottom:1px solid #21262d}
+.breakdown-row:last-child{border:none}
+
+/* ─── Verdict Banner ────────────────────────────────────── */
+.verdict-banner{padding:1.2rem 1.5rem;border-radius:10px;margin-bottom:1.25rem;display:flex;align-items:flex-start;gap:1rem}
+.verdict-safe{background:#23863618;border:2px solid #238636}
+.verdict-review{background:#d2992218;border:2px solid #d29922}
+.verdict-blocked{background:#f8514918;border:2px solid #f85149}
+.verdict-icon{font-size:2rem;line-height:1;flex-shrink:0}
+.verdict-text h3{font-size:1rem;margin-bottom:.3rem}
+.verdict-safe .verdict-text h3{color:#3fb950}
+.verdict-review .verdict-text h3{color:#d29922}
+.verdict-blocked .verdict-text h3{color:#f85149}
+.verdict-text p{font-size:.88rem;color:#c9d1d9}
+.verdict-text ul{margin-top:.4rem;padding-left:1.2rem;font-size:.82rem;color:#8b949e}
+.verdict-text li{margin-bottom:.2rem}
+
+/* ─── Feedback Box ──────────────────────────────────────── */
+.feedback-box{background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:1rem;margin-top:1.25rem}
+.feedback-box h3{font-size:.9rem;color:#f0f6fc;margin-bottom:.5rem;font-weight:600}
+.feedback-box p{font-size:.82rem;color:#8b949e;margin-bottom:.6rem}
+.feedback-box textarea{width:100%;min-height:80px;padding:.6rem .8rem;background:#161b22;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;resize:vertical}
+.feedback-box textarea:focus{outline:none;border-color:#1f6feb}
+.feedback-box .fb-actions{display:flex;gap:.6rem;margin-top:.6rem;align-items:center}
+.feedback-history{margin-top:.75rem}
+.feedback-msg{padding:.5rem .7rem;background:#1f6feb10;border-left:3px solid #1f6feb;border-radius:0 4px 4px 0;margin-bottom:.4rem;font-size:.82rem}
+.feedback-msg .fb-time{color:#8b949e;font-size:.75rem}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>CSV to Supabase — Agentic Pipeline v2</h1>
+    <p>Upload CSV → AI maps & transforms → self-heals errors → you review & give feedback → ingest.</p>
+  </header>
+
+  <!-- Step 1 -->
+  <div class="card" id="card1">
+    <h2><span class="step active" id="s1">1</span> Select Target Table</h2>
+    <select id="tableSelect"><option value="">Loading tables...</option></select>
+    <div id="schemaPreview"></div>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card disabled" id="card2">
+    <h2><span class="step pending" id="s2">2</span> Upload CSV File</h2>
+    <div class="upload-zone" id="dropzone">
+      <input type="file" id="csvFile" accept=".csv" hidden>
+      <p>Drag & drop your CSV here, or <span class="browse" onclick="document.getElementById('csvFile').click()">browse</span></p>
+    </div>
+    <div class="file-info" id="fileInfo"><span class="name" id="fileName"></span><span class="size" id="fileSize"></span></div>
+    <div id="csvPreview"></div>
+    <div class="actions" style="margin-top:1rem">
+      <button class="btn btn-blue" id="analyzeBtn" disabled>Run Agentic Pipeline</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Pipeline Results -->
+  <div class="card disabled" id="card3">
+    <h2><span class="step pending" id="s3">3</span> Pipeline Results & Review</h2>
+    <div id="pipelineContent"></div>
+  </div>
+
+  <!-- Step 4: Results -->
+  <div class="card hidden" id="card4">
+    <h2><span class="step pending" id="s4">4</span> Ingestion Results</h2>
+    <div id="resultContent"></div>
+  </div>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>document.querySelectorAll(s);
+let state={table:null,schema:null,file:null,sessionId:null,mapping:null,preflight:null,feedbackHistory:[]};
+
+async function init(){
+  try{const r=await fetch('/api/tables');const{tables}=await r.json();
+  $('#tableSelect').innerHTML='<option value="">-- Pick a table --</option>'+tables.map(t=>`<option value="${t}">${t}</option>`).join('');}
+  catch(e){$('#tableSelect').innerHTML='<option>Error loading</option>';}
+}
+
+$('#tableSelect').addEventListener('change',async e=>{
+  const name=e.target.value,p=$('#schemaPreview');
+  if(!name){p.innerHTML='';state.table=null;setStep(1);return;}
+  p.innerHTML='<p style="color:#8b949e;font-size:.85rem"><span class="spinner"></span>Loading schema...</p>';
+  try{const r=await fetch(`/api/schema/${name}`);const schema=await r.json();if(schema.error)throw new Error(schema.error);
+  state.table=name;state.schema=schema;
+  let h=`<div class="tbl-wrap"><table><thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Default</th><th>Key</th></tr></thead><tbody>`;
+  for(const c of schema.columns){const pk=schema.primaryKey.includes(c.column_name),uq=schema.uniqueConstraints.some(u=>u.includes(c.column_name));
+  let k='';if(pk)k='<span class="badge badge-high">PK</span>';else if(uq)k='<span class="badge badge-info">UQ</span>';
+  h+=`<tr><td><strong>${c.column_name}</strong></td><td>${c.data_type}${c.character_maximum_length?`(${c.character_maximum_length})`:''}</td><td>${c.is_nullable==='YES'?'Yes':'<span style="color:#f85149">No</span>'}</td><td style="color:#8b949e;font-size:.8rem">${c.column_default||'-'}</td><td>${k}</td></tr>`;}
+  h+='</tbody></table></div>';
+  h+=`<p style="margin-top:.5rem;font-size:.8rem;color:#8b949e">${schema.columns.length} columns, PK: ${schema.primaryKey.join(', ')||'none'}</p>`;
+  p.innerHTML=h;setStep(2);}catch(err){p.innerHTML=`<div class="alert alert-error">${err.message}</div>`;}
+});
+
+const dz=$('#dropzone'),ci=$('#csvFile');
+dz.addEventListener('click',()=>ci.click());
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');if(e.dataTransfer.files.length)handleFile(e.dataTransfer.files[0]);});
+ci.addEventListener('change',()=>{if(ci.files.length)handleFile(ci.files[0]);});
+
+function handleFile(f){
+  if(!f.name.endsWith('.csv')){alert('Please upload a .csv file');return;}
+  state.file=f;$('#fileName').textContent=f.name;$('#fileSize').textContent=fmt(f.size);$('#fileInfo').style.display='flex';$('#analyzeBtn').disabled=false;
+  const rd=new FileReader();rd.onload=()=>{
+    const lines=rd.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){$('#csvPreview').innerHTML='<div class="alert alert-error">CSV empty</div>';return;}
+    const hds=pcsv(lines[0]),rows=lines.slice(1,6).map(pcsv);
+    let h=`<div class="tbl-wrap"><table><thead><tr>${hds.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>`;
+    for(const r of rows)h+=`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`;
+    h+=`</tbody></table></div><p style="margin-top:.5rem;font-size:.8rem;color:#8b949e">${lines.length-1} rows (showing ${rows.length})</p>`;
+    $('#csvPreview').innerHTML=h;};rd.readAsText(f);
+}
+
+$('#analyzeBtn').addEventListener('click',async()=>{
+  if(!state.table||!state.file)return;const btn=$('#analyzeBtn');btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Running pipeline (3 self-healing loops...)';
+  state.feedbackHistory=[];
+  try{const fd=new FormData();fd.append('csv',state.file);fd.append('tableName',state.table);
+  const r=await fetch('/api/analyze',{method:'POST',body:fd});const d=await r.json();if(d.error)throw new Error(d.error);
+  state.sessionId=d.sessionId;state.mapping=d.mapping;state.preflight=d.preflight;
+  renderPreflight(d);setStep(3);}catch(e){$('#pipelineContent').innerHTML=`<div class="alert alert-error">${e.message}</div>`;$('#card3').classList.remove('disabled');}
+  finally{btn.disabled=false;btn.textContent='Run Agentic Pipeline';}
+});
+
+// ═══════════════════════════════════════════════════════════
+// RENDER PIPELINE RESULTS
+// ═══════════════════════════════════════════════════════════
+
+function renderPreflight(data){
+  const pf=data.preflight,mp=data.mapping;
+  let h='';
+
+  // ── Verdict Banner (the main thing humans see) ──────────
+  if(pf.verdict){
+    const v=pf.verdict;
+    const cls=v.status==='safe'?'verdict-safe':v.status==='review'?'verdict-review':'verdict-blocked';
+    const icon=v.status==='safe'?'&#10003;':v.status==='review'?'&#9888;':'&#10007;';
+    const title=v.status==='safe'?'Safe to Ingest':v.status==='review'?'Review Needed':'Cannot Ingest';
+    h+=`<div class="verdict-banner ${cls}">
+      <div class="verdict-icon">${icon}</div>
+      <div class="verdict-text">
+        <h3>${title}</h3>
+        <p>${esc(v.summary)}</p>`;
+    if(v.problems.length){
+      h+=`<ul>`;
+      v.problems.forEach(p=>h+=`<li>${esc(p)}</li>`);
+      h+=`</ul>`;
+    }
+    h+=`</div></div>`;
+  }
+
+  // Score + meta
+  h+=`<div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap">
+    <span style="font-size:.9rem;color:#f0f6fc">Score: <strong>${(pf.evalScore*100).toFixed(1)}%</strong></span>
+    <span style="font-size:.85rem;color:#8b949e">${pf.mappedColumns} columns mapped | ${pf.turns} pipeline turn${pf.turns>1?'s':''} | ${pf.totalRows} rows</span>
+  </div>`;
+
+  // Score bar
+  const score=pf.evalScore;
+  h+=`<div style="max-width:500px;margin-bottom:1rem"><div class="score-bar"><div class="score-fill ${score>=.8?'good':score>=.5?'mid':'bad'}" style="width:${score*100}%"></div></div></div>`;
+
+  // ── Column Mappings Table ───────────────────────────────
+  if(mp.columnMappings.length){
+    h+=`<div class="section"><h3>Column Mappings (${mp.columnMappings.length})</h3><div class="tbl-wrap"><table>
+    <thead><tr><th class="check-col"></th><th>CSV</th><th></th><th>DB Column</th><th>Confidence</th><th>Transform</th><th>Reasoning</th><th>Risks</th></tr></thead><tbody>`;
+    mp.columnMappings.forEach((m,i)=>{
+      const conf=typeof m.confidence==='number'?m.confidence:(m.confidence==='high'?.95:m.confidence==='medium'?.75:.5);
+      const cls=conf>=.85?'badge-high':conf>=.7?'badge-medium':'badge-low';
+      const risks=Array.isArray(m.risks)&&m.risks.length?m.risks.join('; '):'—';
+      h+=`<tr><td class="check-col"><input type="checkbox" checked data-idx="${i}" class="mapping-check"></td>
+      <td><strong>${esc(m.csvColumn)}</strong></td><td style="color:#8b949e;text-align:center">→</td>
+      <td><strong>${esc(m.dbColumn)}</strong></td>
+      <td><span class="badge ${cls}">${typeof m.confidence==='number'?(m.confidence*100).toFixed(0)+'%':m.confidence}</span></td>
+      <td>${m.transformation!=='none'?`<span class="badge badge-transform">${m.transformation}</span>`:'<span class="badge badge-none">none</span>'}</td>
+      <td style="font-size:.8rem;color:#8b949e;max-width:200px">${esc(m.reasoning||'')}</td>
+      <td style="font-size:.78rem;color:#d29922;max-width:150px">${esc(risks)}</td></tr>`;
+    });
+    h+='</tbody></table></div></div>';
+  }
+
+  // ── Transform Validation ────────────────────────────────
+  if(pf.transformValidation){
+    const tv=pf.transformValidation;
+    h+=`<div class="section"><h3>Transform Validation</h3>`;
+    const passRate=(tv.passedRows/tv.totalRows*100).toFixed(1);
+    h+=`<p style="font-size:.85rem;margin-bottom:.5rem">${tv.passedRows}/${tv.totalRows} rows passed transform validation (${passRate}%)</p>`;
+    const badCols=Object.entries(tv.failuresByColumn).filter(([,f])=>f.rate>0.01);
+    if(badCols.length){
+      h+=`<ul class="section-list">`;
+      for(const [col,f] of badCols){
+        const cls=f.rate>0.05?'err':'warn';
+        h+=`<li class="${cls}"><strong>${esc(col)}</strong>: ${(f.rate*100).toFixed(1)}% failure (${f.count} rows) — ${esc(f.examples[0]?.error||'')}</li>`;
+      }
+      h+=`</ul>`;
+    } else {
+      h+=`<div class="alert alert-success">All transforms produce valid output.</div>`;
+    }
+    h+=`</div>`;
+  }
+
+  // ── Dry Run ─────────────────────────────────────────────
+  if(pf.dryRun){
+    const dr=pf.dryRun;
+    h+=`<div class="section"><h3>Dry-Run Validation</h3>`;
+    h+=`<p style="font-size:.85rem;margin-bottom:.5rem">${dr.rowsPassed}/${dr.rowsTested} sample rows passed INSERT test</p>`;
+    if(dr.errors.length){h+=`<ul class="section-list">`;dr.errors.slice(0,5).forEach(e=>h+=`<li class="err">Row ${e.rowIndex}: ${esc(e.error)}</li>`);h+='</ul>';}
+    else h+=`<div class="alert alert-success">All sample rows passed dry-run validation.</div>`;
+    h+='</div>';
+  }
+
+  // ── Discarded / Missing ─────────────────────────────────
+  if(pf.alerts.length){
+    h+=`<div class="section"><h3>Discarded CSV Columns (${pf.alerts.length})</h3><ul class="section-list">`;
+    pf.alerts.forEach(a=>h+=`<li class="info"><strong>${esc(a.column)}</strong> — ${esc(a.note)}</li>`);
+    h+='</ul></div>';
+  }
+  if(pf.missingRequired.length){
+    h+=`<div class="section"><h3>Missing Required DB Columns</h3><ul class="section-list">`;
+    pf.missingRequired.forEach(m=>h+=`<li class="err"><span class="badge badge-critical">CRITICAL</span> <strong>${esc(m.column)}</strong> — ${esc(m.note)}</li>`);
+    h+='</ul></div>';
+  }
+
+  // ── Reflection Log (collapsed) ──────────────────────────
+  if(pf.reflectionLog.length){
+    h+=`<div class="section"><details><summary style="cursor:pointer;font-size:.9rem;color:#f0f6fc;font-weight:600">Reflection Log (${pf.reflectionLog.length} turn${pf.reflectionLog.length>1?'s':''})</summary>`;
+    pf.reflectionLog.forEach(r=>{
+      h+=`<div class="reflection-entry" style="margin-top:.5rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.3rem">
+          <span class="turn-badge">Turn ${r.turn} — ${esc(r.phase)}</span>
+          <span style="font-size:.8rem;color:#8b949e">${r.timestamp.split('T')[1]?.split('.')[0]||''}</span>
+        </div>
+        <div style="margin-bottom:.3rem">Score: <strong style="color:${r.evalScore>=.8?'#3fb950':r.evalScore>=.5?'#d29922':'#f85149'}">${(r.evalScore*100).toFixed(1)}%</strong> — ${esc(r.outcome)}</div>`;
+      if(r.issues.length){h+=`<div style="font-size:.8rem;color:#f85149;margin-top:.3rem">Issues:${r.issues.map(i=>'<br>&nbsp;&nbsp;• '+esc(i)).join('')}</div>`;}
+      if(r.adjustments.length){h+=`<div style="font-size:.8rem;color:#58a6ff;margin-top:.3rem">Adjustments:${r.adjustments.map(a=>'<br>&nbsp;&nbsp;• '+esc(a)).join('')}</div>`;}
+      h+='</div>';
+    });
+    h+='</details></div>';
+  }
+
+  // ═══ HUMAN FEEDBACK BOX ═════════════════════════════════
+  h+=`<div class="feedback-box">
+    <h3>Your Feedback</h3>
+    <p>See something wrong? Tell the AI what to fix. Your text goes directly to Gemini and the pipeline re-runs with your corrections.</p>`;
+
+  // Show prior feedback
+  if(state.feedbackHistory.length){
+    h+=`<div class="feedback-history">`;
+    state.feedbackHistory.forEach(fb=>{
+      h+=`<div class="feedback-msg"><div>${esc(fb)}</div><div class="fb-time">Sent</div></div>`;
+    });
+    h+=`</div>`;
+  }
+
+  h+=`<textarea id="feedbackText" placeholder="e.g. 'price column should be in rupees not dollars' or 'ignore the SKU column' or 'gender mapping is wrong, Male should map to Men'"></textarea>
+    <div class="fb-actions">
+      <button class="btn btn-orange" id="feedbackBtn">Send Feedback & Re-run Pipeline</button>
+      <span style="font-size:.8rem;color:#8b949e" id="feedbackStatus"></span>
+    </div>
+  </div>`;
+
+  // ═══ CONFLICT KEY + INGEST BUTTON ═══════════════════════
+  const keyOpts=[];
+  if(data.schema.primaryKey.length)keyOpts.push({l:`PK: ${data.schema.primaryKey.join(', ')}`,v:data.schema.primaryKey.join(',')});
+  if(data.schema.uniqueConstraints)data.schema.uniqueConstraints.forEach(u=>keyOpts.push({l:`Unique: ${u.join(', ')}`,v:u.join(',')}));
+
+  h+=`<div class="actions" style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #21262d">
+    <label>Conflict Key:</label>
+    <select id="conflictSelect">${keyOpts.map((o,i)=>`<option value="${o.v}" ${i===0?'selected':''}>${o.l}</option>`).join('')}</select>
+    <button class="btn btn-primary" id="ingestBtn">Confirm & Ingest ${pf.totalRows} rows</button>
+    <button class="btn btn-outline" onclick="location.reload()">Cancel</button>
+  </div>`;
+
+  $('#pipelineContent').innerHTML=h;
+
+  // Wire up feedback button
+  $('#feedbackBtn').addEventListener('click',sendFeedback);
+  $('#ingestBtn').addEventListener('click',executeIngest);
+}
+
+// ═══════════════════════════════════════════════════════════
+// HUMAN FEEDBACK → RE-RUN
+// ═══════════════════════════════════════════════════════════
+
+async function sendFeedback(){
+  const text=$('#feedbackText').value.trim();
+  if(!text){alert('Please type your feedback first.');return;}
+  if(!state.sessionId){alert('No active session.');return;}
+
+  const btn=$('#feedbackBtn'),status=$('#feedbackStatus');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Re-running pipeline with your feedback...';
+  status.textContent='';
+
+  state.feedbackHistory.push(text);
+
+  try{
+    const r=await fetch('/api/feedback',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionId:state.sessionId,feedback:text})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error);
+
+    state.mapping=d.mapping;
+    state.preflight=d.preflight;
+    status.textContent=`Pipeline re-run complete (${d.feedbackCount} feedback message${d.feedbackCount>1?'s':''} applied)`;
+
+    renderPreflight(d);
+  }catch(e){
+    status.textContent='';
+    $('#pipelineContent').insertAdjacentHTML('beforeend',`<div class="alert alert-error" style="margin-top:.75rem">Feedback error: ${esc(e.message)}</div>`);
+    // Re-wire buttons since renderPreflight wasn't called
+    $('#feedbackBtn')?.addEventListener('click',sendFeedback);
+    $('#ingestBtn')?.addEventListener('click',executeIngest);
+  }finally{
+    btn.disabled=false;
+    btn.textContent='Send Feedback & Re-run Pipeline';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INGEST
+// ═══════════════════════════════════════════════════════════
+
+async function executeIngest(){
+  const btn=$('#ingestBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Ingesting...';
+  const checks=$$('.mapping-check'),enabled=[];
+  checks.forEach((cb,i)=>{if(cb.checked)enabled.push(state.mapping.columnMappings[i]);});
+  if(!enabled.length){alert('Select at least one mapping');btn.disabled=false;btn.textContent='Confirm & Ingest';return;}
+  const ck=($('#conflictSelect')?.value||'').split(',').filter(Boolean);
+  if(!ck.length){alert('Select a conflict key');btn.disabled=false;btn.textContent='Confirm & Ingest';return;}
+  try{const r=await fetch('/api/ingest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:state.sessionId,enabledMappings:enabled,conflictKeys:ck})});
+  const d=await r.json();if(d.error)throw new Error(d.error);renderResults(d);setStep(4);}
+  catch(e){$('#resultContent').innerHTML=`<div class="alert alert-error">${e.message}</div>`;$('#card4').classList.remove('hidden','disabled');}
+  finally{btn.disabled=false;btn.textContent='Confirm & Ingest';}
+}
+
+function renderResults(d){
+  let h=`<div class="result-grid">
+    <div class="result-card"><div class="num">${d.totalRows}</div><div class="label">Total</div></div>
+    <div class="result-card"><div class="num" style="color:#3fb950">${d.upserted}</div><div class="label">Upserted</div></div>
+    <div class="result-card"><div class="num" style="color:${d.errors.length?'#f85149':'#8b949e'}">${d.errors.length}</div><div class="label">Failed</div></div>
+  </div>`;
+  if(d.upserted===d.totalRows)h+=`<div class="alert alert-success" style="margin-top:1rem">All rows ingested into <strong>${state.table}</strong>.</div>`;
+  if(d.errors.length){h+=`<div class="section"><h3>Errors</h3><ul class="section-list">`;d.errors.forEach(e=>h+=`<li class="err">${esc(e)}</li>`);h+='</ul></div>';}
+  h+=`<div class="actions"><button class="btn btn-blue" onclick="location.reload()">New Import</button></div>`;
+  $('#resultContent').innerHTML=h;
+}
+
+function setStep(n){for(let i=1;i<=4;i++){const c=$(`#card${i}`),s=$(`#s${i}`);s.className='step '+(i<n?'done':i===n?'active':'pending');s.textContent=i<n?'\u2713':i;if(i<=n)c.classList.remove('disabled','hidden');else if(i>n+1)c.classList.add('hidden');else{c.classList.add('disabled');c.classList.remove('hidden');}};if(n<4)$('#card4').classList.add('hidden');}
+function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmt(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB';}
+function pcsv(l){const r=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch==='"')q=!q;else if(ch===','&&!q){r.push(c.trim());c='';}else c+=ch;}r.push(c.trim());return r;}
+init();
+</script>
+</body>
+</html>

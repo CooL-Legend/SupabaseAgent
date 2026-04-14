@@ -1,0 +1,4 @@
+user_id,first_name,last_name,username,bio,location,sex,height
+test_user_001,Alice,Johnson,alice_j,"Fashion lover from NYC",New York,female,165
+test_user_002,Bob,Smith,bob_smith,"Streetwear and sneaker culture fan",Los Angeles,male,180
+test_user_003,Carol,Lee,carol_style,"Sustainable fashion advocate",San Francisco,female,170
