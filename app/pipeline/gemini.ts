@@ -28,14 +28,21 @@ let cachedToken: { token: string; expiresAt: number } | null = null;
 async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.token;
 
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  // Try ADC first — works on Cloud Run (metadata server), with a service
+  // account JSON (GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_APPLICATION_CREDENTIALS),
+  // or locally if the developer has run `gcloud auth application-default login`.
+  try {
     const client = await getAuth().getClient();
     const res = await client.getAccessToken();
-    if (!res.token) throw new Error("GoogleAuth returned no token");
-    cachedToken = { token: res.token, expiresAt: Date.now() + 45 * 60_000 };
-    return res.token;
+    if (res.token) {
+      cachedToken = { token: res.token, expiresAt: Date.now() + 45 * 60_000 };
+      return res.token;
+    }
+  } catch {
+    // Fall through to gcloud CLI fallback below.
   }
 
+  // Last resort for local dev without ADC set up: shell out to the gcloud CLI.
   const token = execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim();
   cachedToken = { token, expiresAt: Date.now() + 45 * 60_000 };
   return token;
