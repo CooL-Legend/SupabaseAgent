@@ -34,3 +34,6 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude
+CLAUDE.md

@@ -17,8 +17,20 @@ function testCast(value: string, transformation: string): boolean {
   if (!value || value.trim() === "") return true;
   try {
     switch (transformation) {
-      case "to_integer": { const n = Number(value.replace(/,/g, "")); return Number.isInteger(n); }
-      case "to_number": { const n = Number(value.replace(/[$€£¥₹,]/g, "")); return !isNaN(n); }
+      case "to_integer": {
+        const cleaned = value
+          .replace(/^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+/i, "")
+          .replace(/[$€£¥₹,\s]/g, "");
+        const n = Number(cleaned);
+        return Number.isInteger(n);
+      }
+      case "to_number": {
+        const cleaned = value
+          .replace(/^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+/i, "")
+          .replace(/[$€£¥₹,\s]/g, "");
+        const n = Number(cleaned);
+        return !isNaN(n);
+      }
       case "to_boolean": return /^(true|false|yes|no|y|n|1|0|active|inactive)$/i.test(value.trim());
       case "to_date": return !isNaN(new Date(value).getTime());
       case "to_timestamp": return !isNaN(new Date(value).getTime());

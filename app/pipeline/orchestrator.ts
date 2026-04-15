@@ -663,9 +663,9 @@ function buildPreflightReport(
 function generateFallbackTransform(m: MappingEntry): string {
   switch (m.transformation) {
     case "to_integer":
-      return `const v = value?.trim(); if (!v || ['', 'null', 'none', 'n/a', '-'].includes(v.toLowerCase())) return null; const n = parseInt(v.replace(/,/g, ''), 10); return isNaN(n) ? null : n;`;
+      return `const v = value?.trim(); if (!v || ['', 'null', 'none', 'n/a', '-'].includes(v.toLowerCase())) return null; const cleaned = v.replace(/^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\\s+/i, '').replace(/[$€£¥₹,\\s]/g, ''); const n = parseInt(cleaned, 10); return isNaN(n) ? null : n;`;
     case "to_number":
-      return `const v = value?.trim(); if (!v || ['', 'null', 'none', 'n/a', '-'].includes(v.toLowerCase())) return null; const n = parseFloat(v.replace(/[$€£¥₹,]/g, '')); return isNaN(n) ? null : n;`;
+      return `const v = value?.trim(); if (!v || ['', 'null', 'none', 'n/a', '-'].includes(v.toLowerCase())) return null; const cleaned = v.replace(/^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\\s+/i, '').replace(/[$€£¥₹,\\s]/g, ''); const n = parseFloat(cleaned); return isNaN(n) ? null : n;`;
     case "to_boolean":
       return `const v = value?.trim()?.toLowerCase(); if (!v || ['', 'null', 'none', 'n/a'].includes(v)) return null; return ['true', '1', 'yes', 'y', 'active'].includes(v);`;
     case "to_date":

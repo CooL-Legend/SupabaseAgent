@@ -282,14 +282,16 @@ app.post("/api/ingest", async (req, res) => {
     if (!session) return res.status(404).json({ error: "Session expired. Re-analyze." });
     if (!conflictKeys?.length) return res.status(400).json({ error: "conflictKeys required" });
 
+    const allTransforms = session.pipeline.preflight.transformations;
     const transforms: TransformSpec[] = enabledMappings
-      ? enabledMappings.map((m: any) => ({
-          csvColumn: m.csvColumn,
-          dbColumn: m.dbColumn,
-          code: `const v = value?.trim(); if (!v || ['', 'null', 'none', 'n/a', '-'].includes(v.toLowerCase())) return null; return v;`,
-          description: m.transformation,
-        }))
-      : session.pipeline.preflight.transformations;
+      ? enabledMappings
+          .map((m: any) =>
+            allTransforms.find(
+              (t) => t.csvColumn === m.csvColumn && t.dbColumn === m.dbColumn,
+            ),
+          )
+          .filter((t: TransformSpec | undefined): t is TransformSpec => Boolean(t))
+      : allTransforms;
 
     console.log(`[ingest] ${session.rows.length} rows, ${transforms.length} transforms -> ${session.tableName}`);
 

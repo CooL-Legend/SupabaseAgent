@@ -16,8 +16,10 @@
 - If DB type is `uuid` and CSV values match UUID pattern → `to_uuid`
 - If DB type is `jsonb`/`json` → `to_json`
 - If DB type is `ARRAY` → `to_array`
-- If CSV has currency symbols ($, €, £) and DB is numeric → strip symbols + `to_number`
+- If CSV has currency symbols ($, €, £, ¥, ₹) and DB is numeric → strip symbols + `to_number`
+- If CSV has ISO currency code prefixes ("INR 1379", "USD 12.50", "EUR 99,99") and DB is numeric → strip the alpha code AND its whitespace AND thousand separators before parsing → `to_number`
 - If CSV has thousand separators (1,000) and DB is numeric → strip commas + `to_number`
+- General rule for numeric targets: the transform MUST remove any leading alpha prefix (3-letter ISO code) or trailing unit suffix before `parseFloat`/`parseInt`
 
 ## Hidden Type Detection
 - **Unix epochs**: Large integers (10+ digits) mapping to timestamp columns

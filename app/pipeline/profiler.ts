@@ -8,7 +8,7 @@ const TYPE_PATTERNS: { type: InferredType; re: RegExp }[] = [
   { type: "date", re: /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/ },
   { type: "boolean", re: /^(true|false|yes|no|y|n|1|0|active|inactive)$/i },
   { type: "phone", re: /^[+\d][\d\s().-]{6,}$/ },
-  { type: "currency", re: /^[$€£¥₹]\s?[\d,]+\.?\d*$/ },
+  { type: "currency", re: /^(?:[$€£¥₹]\s?|(?:INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+)[\d,]+\.?\d*$/i },
   { type: "integer", re: /^-?\d{1,18}$/ },
   { type: "number", re: /^-?\d{0,18}\.\d+$/ },
 ];
@@ -30,6 +30,8 @@ function detectPatterns(values: string[]): string[] {
   if (live.some((v) => /^\d{10,13}$/.test(v))) patterns.push("unix-epoch");
   if (live.some((v) => /^\d{1,3}(,\d{3})+(\.\d+)?$/.test(v))) patterns.push("comma-separated-number");
   if (live.some((v) => /^[$€£¥₹]/.test(v))) patterns.push("currency-prefixed");
+  if (live.some((v) => /^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+[\d,]/i.test(v)))
+    patterns.push("iso-currency-prefixed");
   if (live.some((v) => /^0\d+$/.test(v))) patterns.push("leading-zeros");
   if (live.some((v) => v.length > 200)) patterns.push("long-text");
   if (live.some((v) => v.includes("\n"))) patterns.push("multiline");
@@ -58,7 +60,10 @@ function inferType(values: string[]): InferredType {
 
 // ─── Numeric Statistics ─────────────────────────────────────
 function extractNumber(v: string): number | null {
-  const cleaned = v.replace(/[$€£¥₹,\s]/g, "").trim();
+  const cleaned = v
+    .replace(/^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+/i, "")
+    .replace(/[$€£¥₹,\s]/g, "")
+    .trim();
   const n = Number(cleaned);
   return isNaN(n) ? null : n;
 }
