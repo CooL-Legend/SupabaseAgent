@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createIngestionAgent } from "./src/agent/createIngestionAgent";
 import { readFileSync } from "fs";
+import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 
@@ -20,8 +21,16 @@ for (const line of envLines) {
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const GCP_PROJECT = process.env.GOOGLE_PROJECT_ID || "project-5def41da-b693-4500-a0c";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+
+let cachedToken: { token: string; expiresAt: number } | null = null;
+function getAccessToken(): string {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.token;
+  const token = execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim();
+  cachedToken = { token, expiresAt: Date.now() + 45 * 60_000 };
+  return token;
+}
 
 console.log("Supabase URL:", SUPABASE_URL);
 console.log("Gemini model:", GEMINI_MODEL);
@@ -43,20 +52,25 @@ function stripNulls(obj: unknown): unknown {
 // Gemini adapter using native fetch (no SDK needed)
 const geminiAdapter = {
   async completeJson({ systemPrompt, userPayload }: { systemPrompt: string; userPayload: unknown }) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    const isGemini3 = GEMINI_MODEL.startsWith("gemini-3");
+    const base = isGemini3
+      ? `https://aiplatform.googleapis.com/v1/projects/${GCP_PROJECT}/locations/global`
+      : `https://us-central1-aiplatform.googleapis.com/v1/projects/${GCP_PROJECT}/locations/us-central1`;
+    const url = `${base}/publishers/google/models/${GEMINI_MODEL}:generateContent`;
 
     const fullPrompt = `${systemPrompt}\n\nUser payload:\n${JSON.stringify(userPayload, null, 2)}\n\nRespond with valid JSON only. No markdown, no explanation.`;
 
     const body = JSON.stringify({
-      contents: [{ parts: [{ text: fullPrompt }] }],
+      contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
       generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
     });
 
     // Retry up to 4 times on 429/503 with exponential backoff
     for (let attempt = 0; attempt < 4; attempt++) {
+      const token = getAccessToken();
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body,
       });
 
