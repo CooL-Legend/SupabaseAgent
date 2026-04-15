@@ -14,16 +14,20 @@ import type { PipelineResult, TransformSpec, HumanFeedback, TableSchema } from "
 // ─── .env ───────────────────────────────────────────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = join(__dirname, "..", ".env");
-for (const line of readFileSync(envPath, "utf8").split("\n")) {
-  const t = line.trim();
-  if (!t || t.startsWith("#")) continue;
-  const eq = t.indexOf("=");
-  if (eq < 1) continue;
-  const k = t.slice(0, eq).trim();
-  let v = t.slice(eq + 1).trim();
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
-    v = v.slice(1, -1);
-  if (!process.env[k]) process.env[k] = v;
+try {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const eq = t.indexOf("=");
+    if (eq < 1) continue;
+    const k = t.slice(0, eq).trim();
+    let v = t.slice(eq + 1).trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
+      v = v.slice(1, -1);
+    if (!process.env[k]) process.env[k] = v;
+  }
+} catch {
+  // no .env file — rely on real env vars (Railway, etc.)
 }
 
 // ─── Services ───────────────────────────────────────────────
@@ -310,7 +314,7 @@ app.post("/api/ingest", async (req, res) => {
 
 app.get("/{*path}", (_req, res) => res.sendFile(join(__dirname, "public", "index.html")));
 
-const PORT = 3456;
+const PORT = Number(process.env.PORT) || 3456;
 app.listen(PORT, () => {
   console.log(`\n  CSV -> Supabase Agentic Pipeline v2`);
   console.log(`  http://localhost:${PORT}`);

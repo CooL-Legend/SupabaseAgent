@@ -2,6 +2,55 @@
 
 ---
 
+## Update 4 — Railway Deployment
+
+### Problem
+The app ran only on the developer's laptop. Needed a persistent public URL so others could upload CSVs. Vercel was ruled out because the pipeline routinely exceeds serverless timeouts (5×map + 5×transform + 3×dry-run LLM turns = several minutes). Render was ruled out because free-tier instances sleep on inactivity.
+
+### Solution
+Deployed to Railway, which keeps long-running Node processes awake and has no request timeout. Swapped the Gemini auth path from `gcloud auth print-access-token` (which requires the gcloud CLI binary — absent in Railway containers) to `google-auth-library` reading a service account JSON from an env var. The gcloud shell-out is preserved as a local-dev fallback.
+
+### Files Changed
+
+**`app/pipeline/gemini.ts`**
+- Added `google-auth-library` import and a lazy `GoogleAuth` client.
+- `getAccessToken()` is now async. When `GOOGLE_SERVICE_ACCOUNT_JSON` (or `GOOGLE_APPLICATION_CREDENTIALS`) is set, it mints a token via `GoogleAuth`; otherwise it falls back to `gcloud auth print-access-token` for local development.
+- Token cache logic unchanged (45 min TTL).
+
+**`app/server.ts`**
+- `PORT` now reads `process.env.PORT` (Railway injects this) and falls back to 3456 locally.
+- `.env` loader wrapped in try/catch so a missing `.env` file doesn't crash the container.
+
+**`package.json`**
+- Added `start` script pointing at `tsx app/server.ts`.
+- Moved `tsx` from devDependencies to dependencies (Railway prunes devDeps in production builds).
+- Added `google-auth-library` dependency.
+
+### Env Vars Set on Railway
+- `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` — from existing `.env`.
+- `GOOGLE_PROJECT_ID`, `GEMINI_MODEL` — from existing `.env`.
+- `GOOGLE_SERVICE_ACCOUNT_JSON` — new; the raw JSON of a GCP service account key with the `aiplatform.user` role. Replaces `gcloud` CLI auth.
+
+---
+
+## Update 3 — Currency & Ingest Transform Fixes
+
+### Problem
+User uploaded a PUMA products CSV where the `pricing` column contained values like `"INR 1379"`. Ingestion crashed on every row with `invalid input syntax for type numeric: "INR 1379"`, reporting 0/200 upserted.
+
+### Root Causes
+1. **Ingest route discarded the LLM transforms.** [app/server.ts:285-292](app/server.ts) rebuilt transforms as trivial `return v` passthroughs whenever the user submitted `enabledMappings`. Every currency-stripping transform Gemini produced was thrown away right before insert.
+2. **Currency detection was symbol-only.** Profiler, evaluator `testCast`, and fallback `to_number`/`to_integer` transforms only stripped `$€£¥₹`. ISO alpha codes (`INR`, `USD`, `EUR`, …) were left on the string, so `parseFloat("INR 1379")` → `NaN` → SQL numeric rejection.
+
+### Solution
+**`app/server.ts`** — ingest now looks up the real LLM-generated `TransformSpec` for each `enabledMapping` and passes it through, instead of rebuilding.
+**`app/pipeline/profiler.ts`** — regex and pattern detection extended to recognise `^(INR|USD|EUR|GBP|JPY|CNY|AUD|CAD|CHF|SGD|HKD|AED|SAR|ZAR|BRL|MXN|RUB|KRW|TRY|NZD)\s+` prefixes; `extractNumber` strips them before `Number(...)`.
+**`app/pipeline/evaluator.ts`** — `testCast` for `to_integer`/`to_number` strips the alpha code, symbols, commas, and whitespace before parsing.
+**`app/pipeline/orchestrator.ts`** — fallback `to_number` and `to_integer` transform code strings include the same strip.
+**`app/rules/MAPPING_RULES.md`** — added a rule so Gemini handles alpha currency prefixes on the first pass instead of only after a dry-run failure.
+
+---
+
 ## Update 2 — Gemini 3 Flash via Global Vertex AI Endpoint
 
 ### Problem

@@ -1,19 +1,41 @@
 import { execSync } from "child_process";
+import { GoogleAuth } from "google-auth-library";
 
 const GCP_PROJECT = process.env.GOOGLE_PROJECT_ID || "project-5def41da-b693-4500-a0c";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
 
-// Gemini 3.x models require the global endpoint; 2.x models use a regional endpoint
 const isGemini3 = GEMINI_MODEL.startsWith("gemini-3");
 const GCP_REGION = isGemini3 ? "global" : (process.env.GCP_REGION || "us-central1");
 const VERTEX_BASE = isGemini3
   ? `https://aiplatform.googleapis.com/v1/projects/${GCP_PROJECT}/locations/global`
   : `https://${GCP_REGION}-aiplatform.googleapis.com/v1/projects/${GCP_PROJECT}/locations/${GCP_REGION}`;
 
-let cachedToken: { token: string; expiresAt: number } | null = null;
+// Prefer a service account JSON in env (for Railway/production); fall back to
+// gcloud CLI locally. GOOGLE_SERVICE_ACCOUNT_JSON should contain the raw key JSON.
+let authClient: GoogleAuth | null = null;
+function getAuth(): GoogleAuth {
+  if (authClient) return authClient;
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const credentials = raw ? JSON.parse(raw) : undefined;
+  authClient = new GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/cloud-platform"],
+  });
+  return authClient;
+}
 
-function getAccessToken(): string {
+let cachedToken: { token: string; expiresAt: number } | null = null;
+async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.token;
+
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const client = await getAuth().getClient();
+    const res = await client.getAccessToken();
+    if (!res.token) throw new Error("GoogleAuth returned no token");
+    cachedToken = { token: res.token, expiresAt: Date.now() + 45 * 60_000 };
+    return res.token;
+  }
+
   const token = execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim();
   cachedToken = { token, expiresAt: Date.now() + 45 * 60_000 };
   return token;
@@ -31,7 +53,7 @@ export async function callGemini(prompt: string, jsonMode = true): Promise<unkno
   });
 
   for (let attempt = 0; attempt < 6; attempt++) {
-    const token = getAccessToken();
+    const token = await getAccessToken();
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
