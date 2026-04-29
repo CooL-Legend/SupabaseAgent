@@ -24,6 +24,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const RULES_DIR = join(__dirname, "..", "rules");
 const LOGS_DIR = join(__dirname, "..", "logs");
 
+// DB columns that must NEVER be filled from CSV (populated by separate pipelines).
+const EXCLUDED_BY_TABLE: Record<string, string[]> = {
+  products: ["gcs_front_url", "gcs_back_url", "garment_features", "product_embedding"],
+};
+
 function loadRule(name: string): string {
   try { return readFileSync(join(RULES_DIR, name), "utf8"); } catch { return ""; }
 }
@@ -78,7 +83,18 @@ ${tableKnowledge}
   prompt += `
 ## DATABASE SCHEMA
 ${schemaText}
+`;
 
+  const excluded = EXCLUDED_BY_TABLE[tableName] || [];
+  if (excluded.length > 0) {
+    prompt += `
+## DB COLUMNS TO EXCLUDE FROM CSV INGEST (HARD RULE)
+Do NOT emit any mapping entry whose \`dbColumn\` is one of: ${excluded.map((c) => `\`${c}\``).join(", ")}.
+These are populated by separate backend pipelines. If the CSV has a same-named column, put it in \`unmappedCsvColumns\` with reason "Owned by separate pipeline — do not ingest from CSV".
+`;
+  }
+
+  prompt += `
 ## CSV DATA PROFILE (machine-analyzed)
 ${csvProfileText}
 
@@ -412,15 +428,25 @@ export async function runPipeline(
     );
     const rawMapping = (await callGemini(prompt)) as MappingResult;
 
+    const excludedCols = new Set(EXCLUDED_BY_TABLE[input.tableName] || []);
+    const allMappings = (rawMapping.columnMappings || []).map((m) => ({
+      csvColumn: m.csvColumn || "",
+      dbColumn: m.dbColumn || "",
+      confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
+      transformation: m.transformation || "none",
+      reasoning: m.reasoning || "",
+      risks: Array.isArray(m.risks) ? m.risks : [],
+    }));
+    const filteredMappings = allMappings.filter((m) => {
+      if (excludedCols.has(m.dbColumn)) {
+        log("mapping", `dropped excluded dbColumn=${m.dbColumn} (csv=${m.csvColumn})`);
+        return false;
+      }
+      return true;
+    });
+
     const mapping: MappingResult = {
-      columnMappings: (rawMapping.columnMappings || []).map((m) => ({
-        csvColumn: m.csvColumn || "",
-        dbColumn: m.dbColumn || "",
-        confidence: typeof m.confidence === "number" ? m.confidence : 0.5,
-        transformation: m.transformation || "none",
-        reasoning: m.reasoning || "",
-        risks: Array.isArray(m.risks) ? m.risks : [],
-      })),
+      columnMappings: filteredMappings,
       unmappedCsvColumns: rawMapping.unmappedCsvColumns || [],
       missingDbColumns: rawMapping.missingDbColumns || [],
       warnings: rawMapping.warnings || [],

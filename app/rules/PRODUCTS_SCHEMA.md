@@ -13,11 +13,49 @@ This is a fashion e-commerce product catalog. All products are from Bewakoof bra
 - If CSV has UUIDs, validate format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
 
 ### `title` — VARCHAR(255), NOT NULL
-- Full product name. Max 255 chars. 0% null.
-- Example: "Men's Black Gimme A Break Graphic Printed Oversized T-shirt"
-- Includes gender prefix, color, design description, and garment type.
-- CSV names: "title", "name", "product_name", "productName", "item_name", "description" (if short), "product_title"
+- **NEW SEMANTICS (post-2026-04 migration):** `title` now holds the **product line / family name** only — the leading title-cased or UPPERCASE tokens of the full product name, BEFORE any gender/garment descriptor.
+- Examples (good):
+  - `"Nike ACG 'Lava Loft'"` (line name)
+  - `"GRAPHICS TRAIN CONCEPT"` (PUMA line)
+  - `"VELOCITY"` (PUMA line)
+- Examples (BAD — these are descriptors, belong in `SUBTITLE` instead):
+  - `"Men's Therma-FIT Jacket"`
+  - `"Women's Training Tee"`
+- CSV names that may contain this field directly: `title`, `name`, `product_name`, `productName`, `item_name`, `product_title`, `line_name`, `product_line`.
+
+**SPLIT RULE (critical for PUMA/Nike/Adidas-style CSVs):** when the only available CSV column is a single combined `product_name` like `"GRAPHICS TRAIN CONCEPT Women's Training Tee"`, emit TWO mapping entries:
+1. `product_name → title` — transform: take the substring BEFORE the first gender/garment descriptor token, then `.trim()`. Descriptor tokens to split on (case-insensitive, in this priority order): `Men's`, `Women's`, `Unisex`, `Kids'`, `Boys'`, `Girls'`, `Baby`. If none of these tokens are found, return the full trimmed `product_name` (the whole thing IS the line name).
+2. `product_name → SUBTITLE` — see SUBTITLE section below.
+
+If the CSV provides distinct `title`/`subtitle` (or `line_name`/`description`) columns natively, prefer those over the split.
+
 - VALIDATION: Truncate to 255 chars if longer. Strip leading/trailing whitespace.
+
+### `SUBTITLE` — TEXT, NULLABLE
+- **Case-sensitive column name** — the column was created as `"SUBTITLE"` (quoted, uppercase) in Postgres. Always emit the `dbColumn` as exactly `SUBTITLE` (uppercase). Do NOT lowercase it.
+- Holds the **descriptor tail** of the product name: gender + garment type + variant info.
+- Examples:
+  - `"Men's Therma-FIT Jacket"`
+  - `"Women's Training Tee"`
+  - `"Women's 3\" Running Shorts"`
+- CSV names that may contain this directly: `subtitle`, `description` (when short), `product_description`, `garment_description`, `style_description`.
+
+**SPLIT RULE:** for combined `product_name` CSVs (see `title` above), emit a second mapping entry:
+- `product_name → SUBTITLE` — transform: find the FIRST occurrence of a gender/garment descriptor token (`Men's | Women's | Unisex | Kids' | Boys' | Girls' | Baby`, case-insensitive) and return the substring STARTING at that token, then `.trim()`. If no token is found, return `null`.
+
+Example transform body:
+```js
+const v = value?.trim(); if (!v) return null;
+const m = v.match(/\b(Men's|Women's|Unisex|Kids'|Boys'|Girls'|Baby)\b/i);
+return m ? v.slice(m.index).trim() : null;
+```
+
+For the `title` half, the corresponding transform body is:
+```js
+const v = value?.trim(); if (!v) return null;
+const m = v.match(/\b(Men's|Women's|Unisex|Kids'|Boys'|Girls'|Baby)\b/i);
+return m ? v.slice(0, m.index).trim() : v;
+```
 
 ### `price` — NUMERIC(10,2), NOT NULL
 - Price in Indian Rupees (INR). Range: ₹39 to ₹3,169. Average: ₹603.
@@ -31,8 +69,10 @@ This is a fashion e-commerce product catalog. All products are from Bewakoof bra
   - If price > 50,000, likely wrong currency or data error — flag it
 
 ### `brand` — VARCHAR(100), NULLABLE
-- Almost always "Bewakoof®" (19,293 rows) or "Bewakoof" (1 row). 0% null.
+- The brand TOKEN ONLY — no garment description, no product line. Examples: `"PUMA"`, `"Nike"`, `"Bewakoof®"`, `"Adidas"`.
+- Historic data: most rows are `"Bewakoof®"` (19,293 rows) or `"Bewakoof"` (1 row). New imports add `"PUMA"`, `"Nike"`, etc.
 - CSV names: "brand", "brand_name", "manufacturer", "vendor", "seller"
+- DO NOT put the product line name here (that goes in `title`). DO NOT put the descriptor here (that goes in `SUBTITLE`).
 - Note the ® symbol in "Bewakoof®" — CSV data may have plain "Bewakoof" which is fine.
 - Max 100 chars.
 
@@ -105,14 +145,15 @@ This is a fashion e-commerce product catalog. All products are from Bewakoof bra
 - This column exists but is unused. CSV data can map here if needed.
 - CSV names: "sizes", "size"
 
-### `gcs_front_url` — TEXT, NULLABLE, DEFAULT '', 100% empty  
-- Google Cloud Storage URL for front product image. Currently empty.
-- Pattern (when filled): `https://storage.googleapis.com/tryown-media/products/{uuid}/front.jpg`
-- Only 1 row has data. CSV data unlikely to have this.
+## Columns that CSV ingest MUST SKIP (HARD RULE)
 
-### `gcs_back_url` — TEXT, NULLABLE, DEFAULT '', 100% empty
-- Google Cloud Storage URL for back product image. Currently empty.
-- Pattern: `https://storage.googleapis.com/tryown-media/products/{uuid}/back.jpg`
+These columns are populated by separate backend pipelines, NOT by CSV ingest. Do NOT include them in `columnMappings` under any circumstance. If the CSV happens to contain a column with one of these names (or a close variant), list the CSV column under `unmappedCsvColumns` with the reason `"Owned by separate pipeline — do not ingest from CSV"`.
+
+- `gcs_front_url` — populated by the GCS image upload API (front shot)
+- `gcs_back_url` — populated by the GCS image upload API (back shot)
+- `garment_features` — populated by the feature-extraction service
+- `product_embedding` — populated by the ML embedding pipeline
+- `created_at` — DB default `now()`; let the DB set it
 
 ## Common CSV Scenarios for This Table
 

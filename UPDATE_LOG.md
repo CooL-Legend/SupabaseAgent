@@ -2,6 +2,43 @@
 
 ---
 
+## Update 5 — brand / title / SUBTITLE split + GCS column exclusions
+
+### Problem
+The user reshaped the `products` table:
+```sql
+ALTER TABLE public.products ADD COLUMN "SUBTITLE" text;
+UPDATE public.products SET "SUBTITLE" = title;     -- old title preserved as subtitle
+UPDATE public.products SET title = brand;          -- title now holds brand value
+```
+After the migration, the new column semantics are: `brand` = brand token (`PUMA`), `title` = product line / family name (`GRAPHICS TRAIN CONCEPT`), `SUBTITLE` = descriptor tail (`Women's Training Tee`). The old ingest mapped CSV `product_name → title` 1:1 (because [MAPPING_RULES.md](app/rules/MAPPING_RULES.md) forbade splitting one CSV column into multiple DB columns), so under the new schema `title` and `SUBTITLE` would end up identical or `SUBTITLE` would stay null. Separately, the user wanted `gcs_front_url`, `gcs_back_url`, `garment_features`, and `product_embedding` to be untouchable from CSV ingest — they're filled by other backend pipelines.
+
+### Solution
+The pipeline already supported two `TransformSpec` entries with the same `csvColumn` and different `dbColumn` (the `transformRows` loop at [orchestrator.ts](app/pipeline/orchestrator.ts) just iterates over specs). The blockers were the explicit "NEVER" rule in the mapping prompt and Gemini's lack of awareness of the new column. Three narrow doc/prompt changes plus a defensive code filter:
+
+### Files Changed
+
+**`app/rules/MAPPING_RULES.md`**
+- Replaced the blanket `NEVER map one CSV column to multiple DB columns` rule with: default 1:1, but allow splitting when the table-specific schema doc explicitly documents a split source.
+
+**`app/rules/PRODUCTS_SCHEMA.md`**
+- Rewrote the `title` section with the new "product line / family name" semantics and a SPLIT RULE that tells Gemini to emit two mapping entries for combined `product_name` CSVs, splitting on the first gender/garment descriptor token (`Men's | Women's | Unisex | Kids' | Boys' | Girls' | Baby`).
+- Added a new `SUBTITLE` section documenting the case-sensitive quoted-uppercase column name and the descriptor-tail extraction, with example transform bodies for both halves of the split.
+- Updated the `brand` section to clarify it's the brand token only (no garment description).
+- Added a new top-level `## Columns that CSV ingest MUST SKIP (HARD RULE)` section listing `gcs_front_url`, `gcs_back_url`, `garment_features`, `product_embedding`, `created_at` — replacing the old per-column "Currently empty" stubs.
+
+**`app/pipeline/orchestrator.ts`**
+- Added an `EXCLUDED_BY_TABLE` map (only `products` populated for now).
+- `buildMappingPrompt` now appends a `## DB COLUMNS TO EXCLUDE FROM CSV INGEST (HARD RULE)` section to the prompt for any table in the map.
+- After Gemini returns, the mapping loop drops any `columnMappings` entry whose `dbColumn` is in the exclusion list and logs `[mapping] dropped excluded dbColumn=X` — defensive belt-and-braces in case Gemini ignores the prompt.
+
+### Files NOT changed
+- `app/pipeline/types.ts` — `TransformSpec` shape was already sufficient for splits.
+- `app/pipeline/orchestrator.ts:transformRows` — already supports duplicate `csvColumn` with distinct `dbColumn`.
+- `app/server.ts` — no API surface change; ingest still looks up real LLM transforms by `(csvColumn, dbColumn)` tuple.
+
+---
+
 ## Update 4 — Railway Deployment
 
 ### Problem

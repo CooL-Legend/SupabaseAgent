@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { runPipeline, transformRows } from "./pipeline/orchestrator";
 import { getModelName } from "./pipeline/gemini";
+import { triggerEmbedder } from "../src/integrations/embedderHook";
 import type { PipelineResult, TransformSpec, HumanFeedback, TableSchema } from "./pipeline/types";
 
 // ─── .env ───────────────────────────────────────────────────
@@ -304,6 +305,11 @@ app.post("/api/ingest", async (req, res) => {
 
     console.log(`  done: ${result.upserted} upserted, ${result.errors.length} errors`);
     sessions.delete(sessionId);
+
+    // Fire-and-forget: ping the in-container embedder so any new `products` rows
+    // get their product_embedding populated. No-op if EMBEDDER_URL is unset or
+    // the table isn't in EMBEDDER_TABLES (default: "products").
+    triggerEmbedder(session.tableName, result.upserted);
 
     res.json({ totalRows: session.rows.length, upserted: result.upserted, errors: result.errors });
   } catch (e: any) {

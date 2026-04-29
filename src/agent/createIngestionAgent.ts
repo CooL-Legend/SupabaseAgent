@@ -2,6 +2,7 @@ import { applyDebugFix } from "../debug/applyFix";
 import { parseFile } from "../file/parseFile";
 import { buildColumnProfile } from "../file/profile";
 import { ingestRowsWithIsolation, upsertSingleRow } from "../ingest/upsert";
+import { triggerEmbedder } from "../integrations/embedderHook";
 import { requestDebugFix, requestMappingDecision } from "../llm/decisions";
 import { introspectTableSchema } from "../supabase/introspection";
 import { applyMappingAndCoercions } from "../transform/applyMapping";
@@ -165,6 +166,11 @@ export function createIngestionAgent(config: AgentConfig) {
         });
       }
     }
+
+    // Fire-and-forget: ping the embedder service so newly-upserted rows in
+    // `products` get their product_embedding populated. No-op when EMBEDDER_URL
+    // is unset or the table isn't in EMBEDDER_TABLES (default: "products").
+    triggerEmbedder(analysis.table.fullName, rowsUpserted);
 
     return {
       tableName: analysis.table.fullName,

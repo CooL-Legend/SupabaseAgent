@@ -37,6 +37,8 @@
 - Any mapping with confidence < 0.70 must be flagged for human review
 
 ## Forbidden Actions
-- NEVER map one CSV column to multiple DB columns
+- Default: one CSV column maps to ONE DB column.
+- EXCEPTION: when the table-specific schema doc explicitly lists a "split source" (e.g. `product_name` → `title` + `SUBTITLE`), you MAY emit two mapping entries with the same `csvColumn` and different `dbColumn` values. Each entry must include a transform that extracts only its own portion of the source value.
+- Splits are only allowed when documented in the schema doc — never invent a split on your own.
 - NEVER invent data that doesn't exist in the CSV
 - NEVER silently drop required columns — always flag as critical
