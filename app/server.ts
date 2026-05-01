@@ -318,6 +318,32 @@ app.post("/api/ingest", async (req, res) => {
   }
 });
 
+// ── Embedder proxy ──────────────────────────────────────────
+// The Python embedder binds to 127.0.0.1:$EMBEDDER_INTERNAL_PORT and is not
+// reachable from outside the container. tryown-backend (Cloud Run) calls
+// these paths directly, so we forward them to the loopback service.
+const EMBEDDER_INTERNAL = `http://127.0.0.1:${process.env.EMBEDDER_INTERNAL_PORT || 8081}`;
+
+async function proxyToEmbedder(method: "GET" | "POST", path: string, req: express.Request, res: express.Response) {
+  try {
+    const init: RequestInit = { method, headers: { "Content-Type": "application/json" } };
+    if (method === "POST") init.body = JSON.stringify(req.body ?? {});
+    const r = await fetch(`${EMBEDDER_INTERNAL}${path}`, init);
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.status(r.status);
+    const ct = r.headers.get("content-type");
+    if (ct) res.setHeader("Content-Type", ct);
+    res.send(buf);
+  } catch (e: any) {
+    console.error(`[embedder-proxy] ${path}:`, e.message);
+    res.status(502).json({ error: `embedder unreachable: ${e.message}` });
+  }
+}
+
+app.get("/health", (req, res) => proxyToEmbedder("GET", "/health", req, res));
+app.post("/embed", (req, res) => proxyToEmbedder("POST", "/embed", req, res));
+app.post("/run", (req, res) => proxyToEmbedder("POST", "/run", req, res));
+
 app.get("/{*path}", (_req, res) => res.sendFile(join(__dirname, "public", "index.html")));
 
 const PORT = Number(process.env.PORT) || 3456;
